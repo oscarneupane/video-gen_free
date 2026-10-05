@@ -4,3 +4,7 @@ __pycache__/
 .env
 outputs/
 vidgen_outputs/
+
+# personal photos, voice samples, trained character models: never commit
+private/
+*.safetensors
