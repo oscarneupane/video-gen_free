@@ -63,9 +63,11 @@ class DiffusersBackend:
             self._unload()
             spec = MODELS[key]
             pipe = getattr(self, f"_load_{spec.family}")(spec.repo)
+            if getattr(pipe, "_vidgen_on_gpu", False):
+                pass  # the loader already placed every component
             # Below ~20 GB, stream sub-models to the GPU on demand instead of
             # keeping all of them resident. Slower, but it's what makes a T4 work.
-            if self.vram_gb < 20:
+            elif self.vram_gb < 20:
                 pipe.enable_model_cpu_offload()
             else:
                 pipe.to("cuda")
@@ -89,7 +91,48 @@ class DiffusersBackend:
 
         # The Wan VAE is unstable in half precision, so it stays in fp32.
         vae = AutoencoderKLWan.from_pretrained(repo, subfolder="vae", torch_dtype=self.torch.float32)
-        return WanPipeline.from_pretrained(repo, vae=vae, torch_dtype=self.dtype)
+        if not self._low_ram():
+            return WanPipeline.from_pretrained(repo, vae=vae, torch_dtype=self.dtype)
+
+        # Low-RAM boxes (free Colab: ~12.7 GB): the umT5-XXL text encoder alone is
+        # ~11 GB in half precision, so CPU offload runs out of RAM. Load it 4-bit
+        # straight onto the GPU (~4 GB) and keep the whole pipeline resident there.
+        from transformers import BitsAndBytesConfig, UMT5EncoderModel
+
+        # T5 overflows in fp16; bf16 compute avoids that, and its fp32-pinned
+        # "wo" layers would cost ~4 GB of VRAM, so let them be quantized too.
+        UMT5EncoderModel._keep_in_fp32_modules = None
+        text_encoder = UMT5EncoderModel.from_pretrained(
+            repo,
+            subfolder="text_encoder",
+            quantization_config=BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_quant_type="nf4",
+                bnb_4bit_compute_dtype=self.torch.bfloat16,
+            ),
+            torch_dtype=self.torch.bfloat16,
+            device_map={"": 0},
+        )
+        pipe = WanPipeline.from_pretrained(
+            repo, vae=vae, text_encoder=text_encoder, torch_dtype=self.dtype
+        )
+        pipe.transformer.to("cuda")
+        pipe.vae.to("cuda")
+        pipe._vidgen_on_gpu = True
+        return pipe
+
+    @staticmethod
+    def _low_ram() -> bool:
+        """True when system RAM is too small to hold Wan's text encoder (< 24 GB)."""
+        override = os.getenv("VIDGEN_LOW_RAM", "").lower()
+        if override in {"0", "1", "true", "false"}:
+            return override in {"1", "true"}
+        try:
+            with open("/proc/meminfo") as fh:
+                kb = int(next(l for l in fh if l.startswith("MemTotal")).split()[1])
+            return kb / 1024**2 < 24
+        except (OSError, StopIteration, ValueError):
+            return False
 
     def _load_ltx(self, repo: str):
         from diffusers import LTXPipeline

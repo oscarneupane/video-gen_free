@@ -3,6 +3,7 @@
 diffusers>=0.33
 transformers>=4.46
 accelerate>=1.0
+bitsandbytes>=0.45   # 4-bit text encoder for Wan on low-RAM boxes (free Colab)
 sentencepiece
 ftfy
 imageio
