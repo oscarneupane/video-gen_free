@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>vidgen</title>
+<style>
+  :root {
+    --bg: #f6f6f4; --panel: #ffffff; --text: #1d1d1b; --muted: #6b6b66;
+    --line: #e2e2dd; --accent: #3a5bd9; --accent-text: #ffffff;
+    --ok: #1f8a4c; --bad: #c0392b; --field: #fbfbfa;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141413; --panel: #1e1e1c; --text: #ecece8; --muted: #9a9a93;
+      --line: #33332f; --accent: #7b93f0; --accent-text: #10131f;
+      --ok: #4cc27f; --bad: #ef6b5b; --field: #191917;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1040px; margin: 0 auto; padding: 24px 16px 64px; }
+  header { display: flex; align-items: baseline; gap: 12px; margin-bottom: 20px; }
+  h1 { font-size: 22px; margin: 0; letter-spacing: -0.01em; }
+  h2 { font-size: 14px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 12px; }
+  .sub { color: var(--muted); font-size: 14px; }
+  .grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
+  @media (max-width: 760px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
+  label { display: block; font-size: 13px; color: var(--muted); margin: 10px 0 4px; }
+  input, select, textarea { width: 100%; font: inherit; color: var(--text); background: var(--field);
+    border: 1px solid var(--line); border-radius: 7px; padding: 8px 10px; }
+  textarea { min-height: 96px; resize: vertical; }
+  .row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  button { font: inherit; border: 0; border-radius: 7px; padding: 9px 16px; cursor: pointer;
+    background: var(--accent); color: var(--accent-text); font-weight: 600; }
+  button.ghost { background: transparent; color: var(--text); border: 1px solid var(--line); font-weight: 500; }
+  button:disabled { opacity: .5; cursor: default; }
+  .conn { display: flex; gap: 8px; align-items: end; flex-wrap: wrap; }
+  .conn > div { flex: 1 1 220px; }
+  .status { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); margin-top: 10px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex: none; }
+  .dot.ok { background: var(--ok); } .dot.bad { background: var(--bad); }
+  details { margin-top: 10px; } summary { cursor: pointer; color: var(--muted); font-size: 14px; }
+  .note { font-size: 13px; color: var(--muted); margin-top: 6px; }
+  .bar { height: 8px; background: var(--line); border-radius: 4px; overflow: hidden; margin: 12px 0 6px; }
+  .bar > div { height: 100%; width: 0; background: var(--accent); transition: width .4s; }
+  video { width: 100%; border-radius: 8px; background: #000; display: block; }
+  .empty { color: var(--muted); font-size: 14px; padding: 40px 0; text-align: center; }
+  .err { color: var(--bad); font-size: 14px; margin-top: 8px; white-space: pre-wrap; }
+  .gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+  .gallery figure { margin: 0; }
+  .gallery figcaption { font-size: 12px; color: var(--muted); margin-top: 4px; overflow-wrap: anywhere; }
+  .actions { display: flex; gap: 8px; margin-top: 14px; align-items: center; }
+  .check { display: flex; gap: 6px; align-items: center; font-size: 13px; color: var(--muted); }
+  .check input { width: auto; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>vidgen</h1>
+    <span class="sub">text → video on a free remote GPU, saved to your machine</span>
+  </header>
+
+  <section class="panel" style="margin-bottom:16px">
+    <h2>GPU server</h2>
+    <div class="conn">
+      <div><label for="url">URL (printed by the notebook)</label>
+        <input id="url" placeholder="https://something.trycloudflare.com"></div>
+      <div><label for="token">Token</label>
+        <input id="token" type="password" placeholder="leave blank to keep the current one"></div>
+      <button id="connect" class="ghost">Connect</button>
+    </div>
+    <label class="check"><input type="checkbox" id="remember" checked> save to .env</label>
+    <div class="status"><span class="dot" id="dot"></span><span id="statusText">not connected</span></div>
+  </section>
+
+  <div class="grid">
+    <section class="panel">
+      <h2>Prompt</h2>
+      <textarea id="prompt" placeholder="A red fox running through fresh snow at sunrise, cinematic, shallow depth of field"></textarea>
+      <label for="model">Model</label>
+      <select id="model"></select>
+      <div class="note" id="modelNote"></div>
+      <details>
+        <summary>Advanced settings</summary>
+        <label for="negative">Negative prompt</label>
+        <input id="negative">
+        <div class="row">
+          <div><label for="width">Width</label><input id="width" type="number"></div>
+          <div><label for="height">Height</label><input id="height" type="number"></div>
+          <div><label for="frames">Frames</label><input id="frames" type="number"></div>
+        </div>
+        <div class="row">
+          <div><label for="steps">Steps</label><input id="steps" type="number"></div>
+          <div><label for="guidance">Guidance</label><input id="guidance" type="number" step="0.5"></div>
+          <div><label for="fps">FPS</label><input id="fps" type="number"></div>
+        </div>
+        <label for="seed">Seed (blank = random)</label>
+        <input id="seed" type="number">
+        <div class="note">Sizes and frame counts are snapped to what the model supports.</div>
+      </details>
+      <div class="actions">
+        <button id="go">Generate</button>
+        <span class="note" id="estimate"></span>
+      </div>
+      <div class="err" id="err"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Result</h2>
+      <div id="result"><div class="empty">Your video shows up here.</div></div>
+      <div id="progress" hidden>
+        <div class="bar"><div id="barFill"></div></div>
+        <div class="note" id="progressText"></div>
+      </div>
+    </section>
+  </div>
+
+  <section class="panel" style="margin-top:16px">
+    <h2>Saved videos <span class="sub" id="outDir" style="text-transform:none;letter-spacing:0"></span></h2>
+    <div class="gallery" id="gallery"></div>
+  </section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let models = {};
+
+async function api(path, opts = {}) {
+  const res = await fetch(path, {
+    headers: { "Content-Type": "application/json" }, ...opts,
+    body: opts.body ? JSON.stringify(opts.body) : undefined,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || res.statusText);
+  return data;
+}
+
+function setStatus(state, text) {
+  $("dot").className = "dot " + (state || "");
+  $("statusText").textContent = text;
+}
+
+async function checkHealth() {
+  try {
+    const h = await api("/api/health");
+    const gpu = h.gpu ? `${h.gpu} · ${h.vram_gb} GB` : `${h.backend} backend`;
+    setStatus("ok", `connected — ${gpu} · loaded: ${h.loaded || "none yet"} · queue: ${h.queue}`);
+    return true;
+  } catch (e) {
+    setStatus("bad", e.message);
+    return false;
+  }
+}
+
+function fillDefaults() {
+  const m = models[$("model").value];
+  if (!m) return;
+  $("modelNote").textContent = m.notes;
+  for (const k of ["width", "height", "frames", "steps", "guidance", "fps"]) $(k).value = m[k];
+  updateEstimate();
+}
+
+function updateEstimate() {
+  const frames = +$("frames").value, fps = +$("fps").value;
+  $("estimate").textContent = frames && fps ? `≈ ${(frames / fps).toFixed(1)} s clip` : "";
+}
+
+async function loadGallery() {
+  const { items } = await api("/api/gallery");
+  $("gallery").innerHTML = items.length ? "" : '<div class="empty">Nothing saved yet.</div>';
+  for (const it of items) {
+    const fig = document.createElement("figure");
+    fig.innerHTML = `<video src="${it.url}" controls preload="metadata" muted></video><figcaption></figcaption>`;
+    fig.querySelector("figcaption").textContent = it.name;
+    $("gallery").appendChild(fig);
+  }
+}
+
+function showVideo(url) {
+  $("result").innerHTML = `<video src="${url}" controls autoplay loop muted playsinline></video>`;
+}
+
+async function poll(id) {
+  while (true) {
+    let j;
+    try { j = await api(`/api/jobs/${id}`); }
+    catch (e) { $("progressText").textContent = `${e.message} — retrying…`; await sleep(5000); continue; }
+    $("barFill").style.width = `${Math.round(j.progress * 100)}%`;
+    const label = j.status === "queued" ? "waiting in queue"
+                : j.step === 0 ? "loading model / encoding prompt" : `step ${j.step}/${j.total_steps}`;
+    $("progressText").textContent = `${label} · ${Math.round(j.elapsed)} s`;
+    if (j.status === "done") { showVideo(j.video); loadGallery(); return; }
+    if (j.status === "error") throw new Error(j.error);
+    await sleep(2500);
+  }
+}
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+$("go").onclick = async () => {
+  $("err").textContent = "";
+  const body = { prompt: $("prompt").value, model: $("model").value };
+  if ($("negative").value.trim()) body.negative_prompt = $("negative").value;
+  for (const k of ["width", "height", "frames", "steps", "guidance", "fps", "seed"]) {
+    if ($(k).value !== "") body[k] = +$(k).value;
+  }
+  $("go").disabled = true;
+  $("progress").hidden = false;
+  $("barFill").style.width = "0";
+  $("progressText").textContent = "submitting…";
+  try {
+    const job = await api("/api/generate", { method: "POST", body });
+    const s = job.settings;
+    $("estimate").textContent = `${s.width}×${s.height}, ${s.frames} frames, ${s.steps} steps`;
+    await poll(job.id);
+  } catch (e) {
+    $("err").textContent = e.message;
+  } finally {
+    $("go").disabled = false;
+    $("progress").hidden = true;
+  }
+};
+
+$("connect").onclick = async () => {
+  setStatus("", "connecting…");
+  await api("/api/config", { method: "POST",
+    body: { url: $("url").value, token: $("token").value, remember: $("remember").checked } });
+  $("token").value = "";
+  checkHealth();
+};
+
+$("model").onchange = fillDefaults;
+$("frames").oninput = $("fps").oninput = updateEstimate;
+
+(async () => {
+  const cfg = await api("/api/config");
+  $("url").value = cfg.url;
+  $("outDir").textContent = "— " + cfg.output_dir;
+  const { models: list } = await api("/api/models");
+  for (const m of list) {
+    models[m.key] = m;
+    $("model").add(new Option(m.label, m.key));
+  }
+  $("negative").value = "";
+  $("negative").placeholder = "default: blurry, low quality, distorted…";
+  fillDefaults();
+  loadGallery();
+  if (cfg.url) checkHealth();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+# GPU-side dependencies. torch is already installed on Colab / Kaggle / most
+# pod images — install the CUDA build of torch yourself if it isn't.
+diffusers>=0.33
+transformers>=4.46
+accelerate>=1.0
+sentencepiece
+ftfy
+imageio
+imageio-ffmpeg
+fastapi>=0.110
+uvicorn>=0.29
